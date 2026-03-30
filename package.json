@@ -15,7 +15,7 @@
     ".env.example"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/server.js",
     "dev": "tsx --watch src/server.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",

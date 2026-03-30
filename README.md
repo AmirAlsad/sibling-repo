@@ -27,6 +27,70 @@ claude
 > Use sibling-repo to explore the backend and find the check-in endpoint contract
 ```
 
+## Installation
+
+Register sibling-repo as an MCP server with Claude Code using `claude mcp add`. Choose a **scope** that matches how you want it available:
+
+| Scope | Flag | Config location | When to use |
+|-------|------|----------------|-------------|
+| **user** | `--scope user` | `~/.claude.json` | Available in every project on this machine (recommended for most users) |
+| **project** | `--scope project` | `.claude/settings.json` (committed) | Shared with your team via version control |
+| **local** | `--scope local` | `.claude/settings.local.json` (gitignored) | Per-project, private to your machine |
+
+### Via npx (recommended)
+
+No installation required — npx downloads and runs the latest version automatically:
+
+```bash
+# User scope — available everywhere (recommended)
+claude mcp add --scope user sibling-repo -- npx -y sibling-repo
+
+# Project scope — shared with your team via git
+claude mcp add --scope project sibling-repo -- npx -y sibling-repo
+
+# Local scope — this project only, not committed to git
+claude mcp add --scope local sibling-repo -- npx -y sibling-repo
+```
+
+### Via global install
+
+If you prefer a faster startup (no npx download on each launch):
+
+```bash
+npm install -g sibling-repo
+
+claude mcp add --scope user sibling-repo -- sibling-repo
+```
+
+### Via local clone (for contributors)
+
+```bash
+git clone https://github.com/AmirAlsad/sibling-repo.git
+cd sibling-repo
+npm install && npm run build
+
+claude mcp add --scope user sibling-repo -- node /absolute/path/to/sibling-repo/dist/server.js
+```
+
+### Verifying installation
+
+```bash
+# Check the server is registered
+claude mcp list
+
+# In a Claude Code session, check MCP status
+> /mcp
+
+# Test it
+> Use the sibling-repo tool to list available repos
+```
+
+To remove the server:
+
+```bash
+claude mcp remove sibling-repo
+```
+
 ## How It Works
 
 ```
@@ -133,17 +197,11 @@ ask_repo("backend", "Create a new GET endpoint at /api/v1/workouts/history that 
 ## Development
 
 ```bash
-# Clone and build
 git clone https://github.com/AmirAlsad/sibling-repo.git
 cd sibling-repo
 npm install
 npm run build
-
-# Run tests
 npm test
-
-# Register local build with Claude Code
-claude mcp add --scope user sibling-repo -- node ./dist/server.js
 
 # Development with auto-reload
 npm run dev
