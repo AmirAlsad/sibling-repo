@@ -1,6 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { AgentMode, ModeConfig } from "./types.js";
+import type { Query } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentMode, AgentResult, ModeConfig } from "./types.js";
 import { EXPLORE_PROMPT, PLAN_PROMPT, EXECUTE_PROMPT } from "./prompts.js";
+import { storeUndo } from "./undo.js";
 
 const MODE_CONFIGS: Record<AgentMode, ModeConfig> = {
   explore: {
@@ -34,9 +36,11 @@ export async function runAgent(
   prompt: string,
   mode: AgentMode,
   model: string,
-  maxTurns: number
-): Promise<string> {
+  maxTurns: number,
+  repoName: string
+): Promise<AgentResult> {
   const config = MODE_CONFIGS[mode];
+  const isExecute = mode === "execute";
 
   const options: Parameters<typeof query>[0]["options"] = {
     cwd: repoPath,
@@ -56,11 +60,35 @@ export async function runAgent(
     options.allowDangerouslySkipPermissions = true;
   }
 
+  if (isExecute) {
+    options.enableFileCheckpointing = true;
+    options.extraArgs = { "replay-user-messages": null };
+    options.sandbox = {
+      enabled: true,
+      autoAllowBashIfSandboxed: true,
+      allowUnsandboxedCommands: false,
+      filesystem: {
+        allowWrite: [repoPath],
+      },
+    };
+  }
+
   try {
     let result = "";
+    let checkpointId = "";
+    let sessionId = "";
 
-    for await (const message of query({ prompt, options })) {
+    const queryHandle: Query = query({ prompt, options });
+
+    for await (const message of queryHandle) {
+      if (isExecute && message.type === "user" && !checkpointId && "uuid" in message && message.uuid) {
+        checkpointId = message.uuid as string;
+      }
+
       if (message.type === "result") {
+        if ("session_id" in message) {
+          sessionId = message.session_id as string;
+        }
         if ("result" in message) {
           result = message.result as string;
         } else if ("errors" in message) {
@@ -74,7 +102,15 @@ export async function runAgent(
       throw new Error("Agent returned no result");
     }
 
-    return result;
+    const agentResult: AgentResult = { text: result };
+
+    if (isExecute && sessionId && checkpointId) {
+      const checkpoint = { sessionId, checkpointId, repoName, repoPath };
+      agentResult.checkpoint = checkpoint;
+      storeUndo(repoName, queryHandle, checkpoint);
+    }
+
+    return agentResult;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
 

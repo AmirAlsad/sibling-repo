@@ -41,6 +41,7 @@ describe("MCP Server Integration", () => {
     const toolNames = tools.map((t) => t.name);
 
     expect(toolNames).toContain("ask_repo");
+    expect(toolNames).toContain("undo_last_execute");
     expect(toolNames).toContain("list_repos");
   });
 
@@ -103,6 +104,17 @@ describe("MCP Server Integration", () => {
     const content = result.content as Array<{ type: string; text: string }>;
     expect(content[0].text).toContain('Unknown repo "nonexistent"');
     expect(content[0].text).toContain("repo-a");
+  });
+
+  it("undo_last_execute returns error when no execute has been run", async () => {
+    const result = await client.callTool({
+      name: "undo_last_execute",
+      arguments: { repo: "repo-a" },
+    });
+
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0].text).toContain("No execute session to undo");
   });
 
   it("ask_repo returns error for repo with deleted path", async () => {

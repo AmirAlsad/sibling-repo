@@ -132,6 +132,14 @@ Spawn a Claude Code agent in a sibling repository.
 | `mode` | `"explore"` \| `"plan"` \| `"execute"` | `"explore"` | Agent mode |
 | `model` | string | per-mode default | Model override: `"haiku"`, `"sonnet"`, `"opus"` |
 
+### `undo_last_execute`
+
+Revert all file changes from the last execute-mode run on a sibling repository. Restores files to their state before the execute agent made changes. Only the most recent execute per repo can be undone.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `repo` | string | required | Repository short name to undo changes in |
+
 ### `list_repos`
 
 Returns the configured repositories and their paths. No parameters.
@@ -145,6 +153,8 @@ Returns the configured repositories and their paths. No parameters.
 | **execute** | opus | Read, Grep, Glob, Bash, Write, Edit, MultiEdit | Make changes in the sibling repo (requires plan + approval first) |
 
 > **Plan before execute:** The `execute` mode requires a prior `plan` call and user approval. The orchestrator agent is instructed to always run `plan` first, present the plan to you for approval, and then pass the approved plan into `execute` as the prompt. This ensures you always review what will change before any code is written.
+
+> **Safety:** Execute mode enables file checkpointing (all changes are tracked and can be reverted with `undo_last_execute`) and sandboxing (filesystem writes are restricted to the target repo, and `dangerouslyDisableSandbox` is blocked).
 
 ## Configuration
 

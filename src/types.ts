@@ -15,6 +15,18 @@ export interface ModeConfig {
   systemPromptAppend: string;
 }
 
+export interface ExecuteCheckpoint {
+  sessionId: string;
+  checkpointId: string;
+  repoName: string;
+  repoPath: string;
+}
+
+export interface AgentResult {
+  text: string;
+  checkpoint?: ExecuteCheckpoint;
+}
+
 export interface SiblingConfig {
   repos: Map<string, RepoEntry>;
   models: {

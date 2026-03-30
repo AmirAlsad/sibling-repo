@@ -6,6 +6,7 @@ import { z } from "zod";
 import { existsSync } from "node:fs";
 import { loadConfig } from "./config.js";
 import { runAgent } from "./agent.js";
+import { performUndo } from "./undo.js";
 import type { AgentMode } from "./types.js";
 
 async function main() {
@@ -28,7 +29,7 @@ Available repos: ${repoListStr}
 Modes:
 - explore: Read-only investigation. Use for questions about endpoints, schemas, architecture, conventions, or "how does X work" queries.
 - plan: Generate an implementation plan without writing code. Use when you need a step-by-step plan for changes in the sibling repo.
-- execute: Read-write. Actually make changes in the sibling repo. IMPORTANT: Always run "plan" mode first and get user approval before using "execute". Pass the approved plan as the prompt to the execute call so the agent follows it exactly.`,
+- execute: Read-write. Actually make changes in the sibling repo. IMPORTANT: Always run "plan" mode first and get user approval before using "execute". Pass the approved plan as the prompt to the execute call so the agent follows it exactly. Execute mode is sandboxed to the target repo and all changes are tracked — use undo_last_execute to revert if needed.`,
     {
       repo: z.string().describe("Repository short name from SIBLING_REPOS"),
       prompt: z.string().describe("The task or question for the sibling agent"),
@@ -78,21 +79,59 @@ Modes:
       }
 
       try {
-        const result = await runAgent(
+        const agentResult = await runAgent(
           entry.path,
           prompt,
           mode as AgentMode,
           resolvedModel,
-          config.maxTurns
+          config.maxTurns,
+          repo
         );
+
+        let responseText = agentResult.text;
+        if (agentResult.checkpoint) {
+          responseText += `\n\n---\nExecute session recorded for "${repo}". Use \`undo_last_execute\` with repo "${repo}" to revert all file changes.`;
+        }
+
         return {
-          content: [{ type: "text" as const, text: result }],
+          content: [{ type: "text" as const, text: responseText }],
         };
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : String(err);
         return {
           content: [{ type: "text" as const, text: `Agent error: ${errorMessage}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "undo_last_execute",
+    `Revert all file changes from the last execute-mode run on a sibling repository. This restores files to their state before the execute agent made changes. Only the most recent execute per repo can be undone.
+
+Available repos: ${repoListStr}`,
+    {
+      repo: z.string().describe("Repository short name to undo changes in"),
+    },
+    async ({ repo }) => {
+      try {
+        const result = await performUndo(repo);
+        const filesStr = (result.filesChanged ?? []).join(", ");
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Reverted ${result.filesChanged?.length ?? 0} file(s): ${filesStr} (+${result.insertions ?? 0}/-${result.deletions ?? 0})`,
+            },
+          ],
+        };
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: `Undo error: ${errorMessage}` }],
           isError: true,
         };
       }

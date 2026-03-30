@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**sibling-repo** is an MCP server (stdio transport) that lets a Claude Code agent spawn fully contextualized Claude Code sessions in sibling repositories. It exposes two tools — `ask_repo` (spawn an agent in a configured repo with explore/plan/execute mode) and `list_repos` (discover configured repos). Built on the Claude Agent SDK and MCP SDK.
+**sibling-repo** is an MCP server (stdio transport) that lets a Claude Code agent spawn fully contextualized Claude Code sessions in sibling repositories. It exposes three tools — `ask_repo` (spawn an agent in a configured repo with explore/plan/execute mode), `undo_last_execute` (revert file changes from the last execute run), and `list_repos` (discover configured repos). Built on the Claude Agent SDK and MCP SDK.
 
 ## Build, Test & Run
 
@@ -31,13 +31,15 @@ claude mcp add --scope user sibling-repo -- node ./dist/server.js
 src/
   server.ts    — MCP server entry point, tool registration (stdio transport)
   agent.ts     — Claude Agent SDK wrapper; configures mode-specific tools, permissions, model
+  undo.ts      — Execute undo state management; stores Query handles for rewindFiles
   prompts.ts   — System prompt constants for explore/plan/execute modes
   config.ts    — .env loading (SIBLING_ENV_PATH → ~/.sibling-repo/.env → ./.env),
                  SIBLING_REPOS JSON parsing, path validation
-  types.ts     — Shared TypeScript types
+  types.ts     — Shared TypeScript types (includes ExecuteCheckpoint, AgentResult)
 tests/
   config.test.ts  — Config parsing, path resolution, defaults
-  agent.test.ts   — Mode configs, result extraction, error handling (mocked SDK)
+  agent.test.ts   — Mode configs, result extraction, checkpointing, sandbox (mocked SDK)
+  undo.test.ts    — Undo state management, rewind operations (mocked Query handles)
   server.test.ts  — MCP integration tests via stdio client transport
 ```
 
@@ -52,6 +54,8 @@ tests/
 | execute | Read, Grep, Glob, Bash, Write, Edit, MultiEdit | (none) | acceptEdits | opus |
 
 `allowedTools` auto-approves tools; `disallowedTools` hard-blocks them (overrides everything including bypassPermissions).
+
+Execute mode additionally enables: file checkpointing (track all changes, enable undo via `Query.rewindFiles()`), sandbox (filesystem writes scoped to target repo, `allowUnsandboxedCommands: false`). The `Query` handle is stored in `undo.ts` for the `undo_last_execute` tool.
 
 ## Critical Implementation Detail
 
