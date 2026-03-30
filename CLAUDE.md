@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**sibling-repo** is an MCP server (stdio transport) that lets a Claude Code agent spawn fully contextualized Claude Code sessions in sibling repositories. It exposes three tools — `ask_repo` (spawn an agent in a configured repo with explore/plan/execute mode), `undo_last_execute` (revert file changes from the last execute run), and `list_repos` (discover configured repos). Built on the Claude Agent SDK and MCP SDK.
+**sibling-repo** is an MCP server (stdio transport) that lets a Claude Code agent spawn fully contextualized Claude Code sessions in sibling repositories. It exposes four tools — `ask_repo` (spawn or resume an agent in a configured repo with explore/plan/execute mode), `undo_last_execute` (revert file changes from a conversation's execute run), `list_repos` (discover configured repos), and `list_conversations` (see active conversations). Conversations persist in-memory for the MCP server's lifetime, enabling multi-turn workflows like explore → plan → execute with full context preserved. Built on the Claude Agent SDK and MCP SDK.
 
 ## Build, Test & Run
 
@@ -31,17 +31,19 @@ claude mcp add --scope user sibling-repo -- node ./dist/server.js
 src/
   server.ts    — MCP server entry point, tool registration (stdio transport)
   agent.ts     — Claude Agent SDK wrapper; configures mode-specific tools, permissions, model
+  conversations.ts — In-memory conversation store; create/get/update/list conversations
   stderr-stream.ts — Streams sub-agent thinking, text, and tool calls to stderr for CLI visibility
-  undo.ts      — Execute undo state management; stores Query handles for rewindFiles
+  undo.ts      — Execute undo state management; stores Query handles for rewindFiles (keyed by conversation ID)
   prompts.ts   — System prompt constants for explore/plan/execute modes
   config.ts    — .env loading (SIBLING_ENV_PATH → ~/.sibling-repo/.env → ./.env),
                  SIBLING_REPOS JSON parsing, path validation
-  types.ts     — Shared TypeScript types (includes ExecuteCheckpoint, AgentResult)
+  types.ts     — Shared TypeScript types (includes Conversation, ExecuteCheckpoint, AgentResult)
 tests/
   config.test.ts  — Config parsing, path resolution, defaults
-  agent.test.ts   — Mode configs, result extraction, checkpointing, sandbox (mocked SDK)
+  agent.test.ts   — Mode configs, result extraction, checkpointing, resume, sandbox (mocked SDK)
+  conversations.test.ts — Conversation store CRUD operations
   stderr-stream.test.ts — Stderr streaming formatter unit tests
-  undo.test.ts    — Undo state management, rewind operations (mocked Query handles)
+  undo.test.ts    — Undo state management, rewind operations (keyed by conversation ID)
   server.test.ts  — MCP integration tests via stdio client transport
 ```
 
@@ -57,7 +59,17 @@ tests/
 
 `allowedTools` auto-approves tools; `disallowedTools` hard-blocks them (overrides everything including bypassPermissions). Both explore and plan modes use `bypassPermissions` with Write/Edit/MultiEdit in `disallowedTools` to ensure read-only access without triggering Claude Code's built-in plan-mode file-writing behavior.
 
-Execute mode additionally enables: file checkpointing (track all changes, enable undo via `Query.rewindFiles()`), sandbox (filesystem writes scoped to target repo, `allowUnsandboxedCommands: false`). The `Query` handle is stored in `undo.ts` for the `undo_last_execute` tool.
+Execute mode additionally enables: file checkpointing (track all changes, enable undo via `Query.rewindFiles()`), sandbox (filesystem writes scoped to target repo, `allowUnsandboxedCommands: false`). The `Query` handle is stored in `undo.ts` keyed by conversation ID for the `undo_last_execute` tool.
+
+## Conversation Persistence
+
+Conversations enable multi-turn workflows with full context preservation across `ask_repo` calls. The SDK's `resume: sessionId` feature handles server-side session continuity.
+
+- **Creation**: Omit `conversation_id` from `ask_repo` — a new conversation is created and its ID returned in the response.
+- **Resumption**: Pass `conversation_id` to continue with full context. Mode can change between turns (e.g., explore → plan → execute).
+- **Storage**: In-memory `Map` in `conversations.ts`. Dies with the MCP server process (which dies with the orchestrating agent).
+- **Undo**: Keyed by conversation ID, not repo name. Multiple execute conversations on the same repo each get independent undo.
+- **Metadata**: Each conversation tracks: ID, repo, session ID, last mode, created_at, last_used_at, result snippet, turn count.
 
 ## Stderr Streaming
 

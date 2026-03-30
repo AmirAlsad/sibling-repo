@@ -24,7 +24,21 @@ export interface ExecuteCheckpoint {
 
 export interface AgentResult {
   text: string;
+  sessionId: string;
   checkpoint?: ExecuteCheckpoint;
+  queryHandle?: unknown; // Query handle for execute mode, used by server for undo
+}
+
+export interface Conversation {
+  id: string;
+  repoName: string;
+  repoPath: string;
+  sessionId: string;
+  lastMode: AgentMode;
+  createdAt: Date;
+  lastUsedAt: Date;
+  lastResultSnippet: string;
+  turnCount: number;
 }
 
 export interface SiblingConfig {

@@ -4,20 +4,14 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
 }));
 
-vi.mock("../src/undo.js", () => ({
-  storeUndo: vi.fn(),
-}));
-
 vi.mock("../src/stderr-stream.js", () => ({
   writeStreamEvent: vi.fn(),
 }));
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { storeUndo } from "../src/undo.js";
 import { runAgent } from "../src/agent.js";
 
 const mockQuery = vi.mocked(query);
-const mockStoreUndo = vi.mocked(storeUndo);
 
 // Helper to create a mock Query handle (async generator with close method)
 function mockQueryHandle<T>(items: T[]) {
@@ -34,7 +28,6 @@ function mockQueryHandle<T>(items: T[]) {
       };
     },
     close: vi.fn(),
-    // Stub other Query methods that may be checked
     rewindFiles: vi.fn(),
   };
   return handle;
@@ -43,10 +36,9 @@ function mockQueryHandle<T>(items: T[]) {
 describe("runAgent", () => {
   beforeEach(() => {
     mockQuery.mockReset();
-    mockStoreUndo.mockReset();
   });
 
-  it("returns AgentResult from a successful agent run", async () => {
+  it("returns AgentResult with sessionId from a successful agent run", async () => {
     mockQuery.mockReturnValue(
       mockQueryHandle([
         { type: "assistant", message: { content: "thinking..." } },
@@ -62,7 +54,9 @@ describe("runAgent", () => {
     const result = await runAgent("/tmp/repo", "find the endpoint", "explore", "sonnet", 50, "backend");
 
     expect(result.text).toBe("The endpoint is POST /api/v1/check-in");
+    expect(result.sessionId).toBe("sess-1");
     expect(result.checkpoint).toBeUndefined();
+    expect(result.queryHandle).toBeUndefined();
     expect(mockQuery).toHaveBeenCalledOnce();
   });
 
@@ -92,6 +86,8 @@ describe("runAgent", () => {
     // explore mode should NOT have checkpointing or sandbox
     expect(callArgs.options.enableFileCheckpointing).toBeUndefined();
     expect(callArgs.options.sandbox).toBeUndefined();
+    // no resume when not provided
+    expect(callArgs.options.resume).toBeUndefined();
   });
 
   it("passes correct options for plan mode", async () => {
@@ -151,7 +147,7 @@ describe("runAgent", () => {
     });
   });
 
-  it("execute mode captures checkpoint from user message and stores undo", async () => {
+  it("execute mode returns checkpoint and queryHandle", async () => {
     const handle = mockQueryHandle([
       { type: "user", uuid: "checkpoint-uuid-123" },
       { type: "result", subtype: "success", result: "changes made", session_id: "sess-abc" },
@@ -161,25 +157,17 @@ describe("runAgent", () => {
     const result = await runAgent("/tmp/repo", "implement feature", "execute", "opus", 50, "backend");
 
     expect(result.text).toBe("changes made");
+    expect(result.sessionId).toBe("sess-abc");
     expect(result.checkpoint).toEqual({
       sessionId: "sess-abc",
       checkpointId: "checkpoint-uuid-123",
       repoName: "backend",
       repoPath: "/tmp/repo",
     });
-    expect(mockStoreUndo).toHaveBeenCalledWith(
-      "backend",
-      handle,
-      {
-        sessionId: "sess-abc",
-        checkpointId: "checkpoint-uuid-123",
-        repoName: "backend",
-        repoPath: "/tmp/repo",
-      }
-    );
+    expect(result.queryHandle).toBe(handle);
   });
 
-  it("non-execute modes return no checkpoint", async () => {
+  it("non-execute modes return no checkpoint or queryHandle", async () => {
     mockQuery.mockReturnValue(
       mockQueryHandle([
         { type: "user", uuid: "some-uuid" },
@@ -190,7 +178,33 @@ describe("runAgent", () => {
     const result = await runAgent("/tmp/repo", "search", "explore", "sonnet", 50, "backend");
 
     expect(result.checkpoint).toBeUndefined();
-    expect(mockStoreUndo).not.toHaveBeenCalled();
+    expect(result.queryHandle).toBeUndefined();
+  });
+
+  it("passes resume option when resumeSessionId is provided", async () => {
+    mockQuery.mockReturnValue(
+      mockQueryHandle([
+        { type: "result", subtype: "success", result: "continued", session_id: "s2" },
+      ]) as any
+    );
+
+    await runAgent("/tmp/repo", "continue", "explore", "sonnet", 50, "backend", "sess-previous");
+
+    const opts = mockQuery.mock.calls[0][0].options;
+    expect(opts.resume).toBe("sess-previous");
+  });
+
+  it("does not set resume option when resumeSessionId is not provided", async () => {
+    mockQuery.mockReturnValue(
+      mockQueryHandle([
+        { type: "result", subtype: "success", result: "fresh", session_id: "s1" },
+      ]) as any
+    );
+
+    await runAgent("/tmp/repo", "start", "explore", "sonnet", 50, "backend");
+
+    const opts = mockQuery.mock.calls[0][0].options;
+    expect(opts.resume).toBeUndefined();
   });
 
   it("uses claude_code system prompt preset", async () => {

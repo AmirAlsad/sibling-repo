@@ -1,6 +1,6 @@
 {
   "name": "sibling-repo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server that spawns Claude Code agents in sibling repositories",
   "license": "MIT",
   "type": "module",

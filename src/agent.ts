@@ -2,7 +2,6 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentMode, AgentResult, ModeConfig } from "./types.js";
 import { EXPLORE_PROMPT, PLAN_PROMPT, EXECUTE_PROMPT } from "./prompts.js";
-import { storeUndo } from "./undo.js";
 import { writeStreamEvent } from "./stderr-stream.js";
 
 const MODE_CONFIGS: Record<AgentMode, ModeConfig> = {
@@ -38,7 +37,8 @@ export async function runAgent(
   mode: AgentMode,
   model: string,
   maxTurns: number,
-  repoName: string
+  repoName: string,
+  resumeSessionId?: string
 ): Promise<AgentResult> {
   const config = MODE_CONFIGS[mode];
   const isExecute = mode === "execute";
@@ -60,6 +60,10 @@ export async function runAgent(
 
   if (config.allowDangerouslySkipPermissions) {
     options.allowDangerouslySkipPermissions = true;
+  }
+
+  if (resumeSessionId) {
+    options.resume = resumeSessionId;
   }
 
   if (isExecute) {
@@ -106,12 +110,11 @@ export async function runAgent(
       throw new Error("Agent returned no result");
     }
 
-    const agentResult: AgentResult = { text: result };
+    const agentResult: AgentResult = { text: result, sessionId };
 
     if (isExecute && sessionId && checkpointId) {
-      const checkpoint = { sessionId, checkpointId, repoName, repoPath };
-      agentResult.checkpoint = checkpoint;
-      storeUndo(repoName, queryHandle, checkpoint);
+      agentResult.checkpoint = { sessionId, checkpointId, repoName, repoPath };
+      agentResult.queryHandle = queryHandle;
     }
 
     return agentResult;

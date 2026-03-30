@@ -6,8 +6,15 @@ import { z } from "zod";
 import { existsSync } from "node:fs";
 import { loadConfig } from "./config.js";
 import { runAgent } from "./agent.js";
-import { performUndo } from "./undo.js";
+import { storeUndo, performUndo } from "./undo.js";
+import {
+  createConversation,
+  getConversation,
+  updateConversation,
+  listConversations,
+} from "./conversations.js";
 import type { AgentMode } from "./types.js";
+import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
 async function main() {
   const config = loadConfig();
@@ -17,7 +24,7 @@ async function main() {
 
   const server = new McpServer({
     name: "sibling-repo",
-    version: "0.1.0",
+    version: "0.2.0",
   });
 
   server.tool(
@@ -29,7 +36,12 @@ Available repos: ${repoListStr}
 Modes:
 - explore: Read-only investigation. Use for questions about endpoints, schemas, architecture, conventions, or "how does X work" queries.
 - plan: Generate an implementation plan without writing code. Use when you need a step-by-step plan for changes in the sibling repo.
-- execute: Read-write. Actually make changes in the sibling repo. IMPORTANT: Always run "plan" mode first and get user approval before using "execute". Pass the approved plan as the prompt to the execute call so the agent follows it exactly. Execute mode is sandboxed to the target repo and all changes are tracked — use undo_last_execute to revert if needed.`,
+- execute: Read-write. Actually make changes in the sibling repo. IMPORTANT: Always run "plan" mode first and get user approval before using "execute". Pass the approved plan as the prompt to the execute call so the agent follows it exactly. Execute mode is sandboxed to the target repo and all changes are tracked — use undo_last_execute to revert if needed.
+
+Conversations:
+- Omit conversation_id to start a new conversation. The response includes a conversation_id you can use to resume.
+- Pass conversation_id to continue an existing conversation with full context preserved.
+- You can change modes between turns (e.g., explore → plan → execute) within the same conversation.`,
     {
       repo: z.string().describe("Repository short name from SIBLING_REPOS"),
       prompt: z.string().describe("The task or question for the sibling agent"),
@@ -43,8 +55,14 @@ Modes:
         .string()
         .optional()
         .describe('Model override: "haiku", "sonnet", "opus"'),
+      conversation_id: z
+        .string()
+        .optional()
+        .describe(
+          "Resume an existing conversation. Omit to start a new one."
+        ),
     },
-    async ({ repo, prompt, mode, model }) => {
+    async ({ repo, prompt, mode, model, conversation_id }) => {
       const entry = config.repos.get(repo);
       if (!entry) {
         return {
@@ -70,6 +88,35 @@ Modes:
         };
       }
 
+      // Resolve resume session ID from existing conversation
+      let resumeSessionId: string | undefined;
+      if (conversation_id) {
+        const existing = getConversation(conversation_id);
+        if (!existing) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Conversation "${conversation_id}" not found. Use list_conversations to see active conversations, or omit conversation_id to start a new one.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        if (existing.repoName !== repo) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Conversation "${conversation_id}" belongs to repo "${existing.repoName}", not "${repo}".`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        resumeSessionId = existing.sessionId;
+      }
+
       const resolvedModel = model ?? config.models[mode as AgentMode];
 
       if (mode === "execute") {
@@ -85,12 +132,44 @@ Modes:
           mode as AgentMode,
           resolvedModel,
           config.maxTurns,
-          repo
+          repo,
+          resumeSessionId
         );
 
+        // Manage conversation state
+        let conversationId: string;
+        if (conversation_id) {
+          updateConversation(
+            conversation_id,
+            agentResult.sessionId,
+            mode as AgentMode,
+            agentResult.text
+          );
+          conversationId = conversation_id;
+        } else {
+          const conversation = createConversation(
+            repo,
+            entry.path,
+            agentResult.sessionId,
+            mode as AgentMode,
+            agentResult.text
+          );
+          conversationId = conversation.id;
+        }
+
+        // Store undo keyed by conversation ID for execute mode
+        if (agentResult.checkpoint && agentResult.queryHandle) {
+          storeUndo(
+            conversationId,
+            agentResult.queryHandle as Query,
+            agentResult.checkpoint
+          );
+        }
+
         let responseText = agentResult.text;
+        responseText += `\n\n---\nconversation_id: ${conversationId}`;
         if (agentResult.checkpoint) {
-          responseText += `\n\n---\nExecute session recorded for "${repo}". Use \`undo_last_execute\` with repo "${repo}" to revert all file changes.`;
+          responseText += `\nExecute session recorded. Use \`undo_last_execute\` with conversation_id "${conversationId}" to revert all file changes.`;
         }
 
         return {
@@ -109,15 +188,15 @@ Modes:
 
   server.tool(
     "undo_last_execute",
-    `Revert all file changes from the last execute-mode run on a sibling repository. This restores files to their state before the execute agent made changes. Only the most recent execute per repo can be undone.
-
-Available repos: ${repoListStr}`,
+    `Revert all file changes from the last execute-mode run on a conversation. This restores files to their state before the execute agent made changes.`,
     {
-      repo: z.string().describe("Repository short name to undo changes in"),
+      conversation_id: z
+        .string()
+        .describe("Conversation ID to undo execute changes for"),
     },
-    async ({ repo }) => {
+    async ({ conversation_id }) => {
       try {
-        const result = await performUndo(repo);
+        const result = await performUndo(conversation_id);
         const filesStr = (result.filesChanged ?? []).join(", ");
         return {
           content: [
@@ -151,6 +230,33 @@ Available repos: ${repoListStr}`,
       return {
         content: [
           { type: "text" as const, text: JSON.stringify(repos, null, 2) },
+        ],
+      };
+    }
+  );
+
+  server.tool(
+    "list_conversations",
+    "List all active conversations across sibling repositories. Shows conversation ID, repo, last mode used, timestamps, result snippet, and turn count.",
+    {},
+    async () => {
+      const conversations = listConversations().map((c) => ({
+        id: c.id,
+        repo: c.repoName,
+        last_mode: c.lastMode,
+        created_at: c.createdAt.toISOString(),
+        last_used_at: c.lastUsedAt.toISOString(),
+        last_result_snippet: c.lastResultSnippet,
+        turn_count: c.turnCount,
+      }));
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: conversations.length > 0
+              ? JSON.stringify(conversations, null, 2)
+              : "No active conversations.",
+          },
         ],
       };
     }

@@ -9,25 +9,25 @@ interface UndoEntry {
 const undoStore = new Map<string, UndoEntry>();
 
 export function storeUndo(
-  repoName: string,
+  conversationId: string,
   queryHandle: Query,
   checkpoint: ExecuteCheckpoint
 ): void {
-  const existing = undoStore.get(repoName);
+  const existing = undoStore.get(conversationId);
   if (existing) {
     existing.queryHandle.close();
   }
-  undoStore.set(repoName, { queryHandle, checkpoint });
+  undoStore.set(conversationId, { queryHandle, checkpoint });
 }
 
-export function getUndoInfo(repoName: string): ExecuteCheckpoint | undefined {
-  return undoStore.get(repoName)?.checkpoint;
+export function getUndoInfo(conversationId: string): ExecuteCheckpoint | undefined {
+  return undoStore.get(conversationId)?.checkpoint;
 }
 
-export async function performUndo(repoName: string): Promise<RewindFilesResult> {
-  const entry = undoStore.get(repoName);
+export async function performUndo(conversationId: string): Promise<RewindFilesResult> {
+  const entry = undoStore.get(conversationId);
   if (!entry) {
-    throw new Error(`No execute session to undo for repo "${repoName}"`);
+    throw new Error(`No execute session to undo for conversation "${conversationId}"`);
   }
 
   const result = await entry.queryHandle.rewindFiles(entry.checkpoint.checkpointId);
@@ -37,7 +37,7 @@ export async function performUndo(repoName: string): Promise<RewindFilesResult> 
   }
 
   entry.queryHandle.close();
-  undoStore.delete(repoName);
+  undoStore.delete(conversationId);
 
   return result;
 }

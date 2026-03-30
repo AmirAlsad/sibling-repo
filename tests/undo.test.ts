@@ -13,7 +13,6 @@ function mockQueryHandle(rewindResult?: any) {
         deletions: 5,
       }
     ),
-    // Async generator stubs (not used in undo tests)
     [Symbol.asyncIterator]: vi.fn(),
   } as any;
 }
@@ -28,70 +27,87 @@ function makeCheckpoint(repoName = "backend"): ExecuteCheckpoint {
 }
 
 describe("undo", () => {
-  beforeEach(() => {
-    // Clear any stored state between tests by performing cleanup
-    // We store and clear for repos we might have used
-    try {
-      // Use a fresh handle to avoid "no entry" errors
-    } catch {}
-  });
+  // Use unique conversation IDs per test to avoid cross-test state
+  let testId = 0;
+  function uniqueId() {
+    return `conv-${++testId}`;
+  }
 
   it("storeUndo and getUndoInfo round-trip", () => {
+    const id = uniqueId();
     const handle = mockQueryHandle();
     const checkpoint = makeCheckpoint();
 
-    storeUndo("backend", handle, checkpoint);
-    expect(getUndoInfo("backend")).toEqual(checkpoint);
+    storeUndo(id, handle, checkpoint);
+    expect(getUndoInfo(id)).toEqual(checkpoint);
   });
 
-  it("getUndoInfo returns undefined for unknown repo", () => {
+  it("getUndoInfo returns undefined for unknown conversation", () => {
     expect(getUndoInfo("nonexistent")).toBeUndefined();
   });
 
   it("storeUndo replaces previous entry and closes old handle", () => {
+    const id = uniqueId();
     const handle1 = mockQueryHandle();
     const handle2 = mockQueryHandle();
     const checkpoint1 = makeCheckpoint();
     const checkpoint2 = { ...makeCheckpoint(), checkpointId: "checkpoint-789" };
 
-    storeUndo("backend", handle1, checkpoint1);
-    storeUndo("backend", handle2, checkpoint2);
+    storeUndo(id, handle1, checkpoint1);
+    storeUndo(id, handle2, checkpoint2);
 
     expect(handle1.close).toHaveBeenCalledOnce();
-    expect(getUndoInfo("backend")).toEqual(checkpoint2);
+    expect(getUndoInfo(id)).toEqual(checkpoint2);
   });
 
   it("performUndo calls rewindFiles and clears entry", async () => {
+    const id = uniqueId();
     const handle = mockQueryHandle();
     const checkpoint = makeCheckpoint();
 
-    storeUndo("backend", handle, checkpoint);
-    const result = await performUndo("backend");
+    storeUndo(id, handle, checkpoint);
+    const result = await performUndo(id);
 
     expect(handle.rewindFiles).toHaveBeenCalledWith("checkpoint-456");
     expect(result.canRewind).toBe(true);
     expect(result.filesChanged).toEqual(["src/index.ts", "src/utils.ts"]);
     expect(handle.close).toHaveBeenCalled();
-    expect(getUndoInfo("backend")).toBeUndefined();
+    expect(getUndoInfo(id)).toBeUndefined();
   });
 
   it("performUndo throws when no entry exists", async () => {
     await expect(performUndo("nonexistent")).rejects.toThrow(
-      'No execute session to undo for repo "nonexistent"'
+      'No execute session to undo for conversation "nonexistent"'
     );
   });
 
   it("performUndo throws when rewind fails", async () => {
+    const id = uniqueId();
     const handle = mockQueryHandle({
       canRewind: false,
       error: "Files have been modified externally",
     });
     const checkpoint = makeCheckpoint();
 
-    storeUndo("backend", handle, checkpoint);
+    storeUndo(id, handle, checkpoint);
 
-    await expect(performUndo("backend")).rejects.toThrow(
+    await expect(performUndo(id)).rejects.toThrow(
       "Files have been modified externally"
     );
+  });
+
+  it("supports multiple conversations independently", () => {
+    const id1 = uniqueId();
+    const id2 = uniqueId();
+    const handle1 = mockQueryHandle();
+    const handle2 = mockQueryHandle();
+    const checkpoint1 = makeCheckpoint("backend");
+    const checkpoint2 = makeCheckpoint("frontend");
+
+    storeUndo(id1, handle1, checkpoint1);
+    storeUndo(id2, handle2, checkpoint2);
+
+    expect(getUndoInfo(id1)).toEqual(checkpoint1);
+    expect(getUndoInfo(id2)).toEqual(checkpoint2);
   });
 });

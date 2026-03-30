@@ -36,16 +36,17 @@ describe("MCP Server Integration", () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
-  it("lists available tools", async () => {
+  it("lists available tools including list_conversations", async () => {
     const { tools } = await client.listTools();
     const toolNames = tools.map((t) => t.name);
 
     expect(toolNames).toContain("ask_repo");
     expect(toolNames).toContain("undo_last_execute");
     expect(toolNames).toContain("list_repos");
+    expect(toolNames).toContain("list_conversations");
   });
 
-  it("ask_repo tool has correct input schema", async () => {
+  it("ask_repo tool has conversation_id in input schema", async () => {
     const { tools } = await client.listTools();
     const askRepo = tools.find((t) => t.name === "ask_repo")!;
 
@@ -53,15 +54,19 @@ describe("MCP Server Integration", () => {
     expect(askRepo.inputSchema.properties).toHaveProperty("prompt");
     expect(askRepo.inputSchema.properties).toHaveProperty("mode");
     expect(askRepo.inputSchema.properties).toHaveProperty("model");
+    expect(askRepo.inputSchema.properties).toHaveProperty("conversation_id");
     expect(askRepo.inputSchema.required).toContain("repo");
     expect(askRepo.inputSchema.required).toContain("prompt");
+    // conversation_id should be optional
+    expect(askRepo.inputSchema.required).not.toContain("conversation_id");
   });
 
-  it("ask_repo description includes available repos", async () => {
+  it("ask_repo description includes conversation guidance", async () => {
     const { tools } = await client.listTools();
     const askRepo = tools.find((t) => t.name === "ask_repo")!;
 
     expect(askRepo.description).toContain("repo-a");
+    expect(askRepo.description).toContain("conversation_id");
   });
 
   it("ask_repo description requires plan before execute", async () => {
@@ -70,6 +75,14 @@ describe("MCP Server Integration", () => {
 
     expect(askRepo.description).toContain("Always run \"plan\" mode first");
     expect(askRepo.description).toContain("user approval");
+  });
+
+  it("undo_last_execute uses conversation_id parameter", async () => {
+    const { tools } = await client.listTools();
+    const undo = tools.find((t) => t.name === "undo_last_execute")!;
+
+    expect(undo.inputSchema.properties).toHaveProperty("conversation_id");
+    expect(undo.inputSchema.properties).not.toHaveProperty("repo");
   });
 
   it("list_repos returns configured repositories", async () => {
@@ -91,6 +104,16 @@ describe("MCP Server Integration", () => {
     });
   });
 
+  it("list_conversations returns empty initially", async () => {
+    const result = await client.callTool({
+      name: "list_conversations",
+      arguments: {},
+    });
+
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0].text).toBe("No active conversations.");
+  });
+
   it("ask_repo returns error for unknown repo", async () => {
     const result = await client.callTool({
       name: "ask_repo",
@@ -106,10 +129,25 @@ describe("MCP Server Integration", () => {
     expect(content[0].text).toContain("repo-a");
   });
 
+  it("ask_repo returns error for unknown conversation_id", async () => {
+    const result = await client.callTool({
+      name: "ask_repo",
+      arguments: {
+        repo: "repo-a",
+        prompt: "test",
+        conversation_id: "nonexistent-conv-id",
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0].text).toContain('Conversation "nonexistent-conv-id" not found');
+  });
+
   it("undo_last_execute returns error when no execute has been run", async () => {
     const result = await client.callTool({
       name: "undo_last_execute",
-      arguments: { repo: "repo-a" },
+      arguments: { conversation_id: "some-conv-id" },
     });
 
     expect(result.isError).toBe(true);
