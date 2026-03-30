@@ -1,0 +1,48 @@
+{
+  "name": "sibling-repo",
+  "version": "0.1.0",
+  "description": "MCP server that spawns Claude Code agents in sibling repositories",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "sibling-repo": "./dist/server.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx --watch src/server.ts",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "multi-repo",
+    "agent-sdk",
+    "cross-repository"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AmirAlsad/sibling-repo"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.0",
+    "@modelcontextprotocol/sdk": "^1.27.0",
+    "dotenv": "^16.4.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.2"
+  }
+}
