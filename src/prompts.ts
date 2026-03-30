@@ -50,7 +50,9 @@ Your plan should include:
 - Testing considerations
 - Order of operations (what to do first)
 
-Format the plan as a markdown document that another developer or agent could follow step-by-step.`;
+Format the plan as a markdown document that another developer or agent could follow step-by-step.
+
+CRITICAL: Your response text IS the deliverable. You MUST include the complete implementation plan in your response. Do NOT reference external plan files or attempt to write files — you are in read-only mode.`;
 
 export const EXECUTE_PROMPT = `You are a code implementation specialist. You have full read-write access to this repository.
 

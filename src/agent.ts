@@ -3,6 +3,7 @@ import type { Query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentMode, AgentResult, ModeConfig } from "./types.js";
 import { EXPLORE_PROMPT, PLAN_PROMPT, EXECUTE_PROMPT } from "./prompts.js";
 import { storeUndo } from "./undo.js";
+import { writeStreamEvent } from "./stderr-stream.js";
 
 const MODE_CONFIGS: Record<AgentMode, ModeConfig> = {
   explore: {
@@ -16,8 +17,8 @@ const MODE_CONFIGS: Record<AgentMode, ModeConfig> = {
   plan: {
     allowedTools: ["Read", "Grep", "Glob", "Bash"],
     disallowedTools: ["Write", "Edit", "MultiEdit"],
-    permissionMode: "plan",
-    allowDangerouslySkipPermissions: false,
+    permissionMode: "bypassPermissions",
+    allowDangerouslySkipPermissions: true,
     defaultModel: "opus",
     systemPromptAppend: PLAN_PROMPT,
   },
@@ -54,6 +55,7 @@ export async function runAgent(
     permissionMode: config.permissionMode as "default" | "plan" | "acceptEdits" | "bypassPermissions",
     model,
     maxTurns,
+    includePartialMessages: true,
   };
 
   if (config.allowDangerouslySkipPermissions) {
@@ -81,6 +83,8 @@ export async function runAgent(
     const queryHandle: Query = query({ prompt, options });
 
     for await (const message of queryHandle) {
+      writeStreamEvent(message);
+
       if (isExecute && message.type === "user" && !checkpointId && "uuid" in message && message.uuid) {
         checkpointId = message.uuid as string;
       }

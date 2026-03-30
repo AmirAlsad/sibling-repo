@@ -31,6 +31,7 @@ claude mcp add --scope user sibling-repo -- node ./dist/server.js
 src/
   server.ts    — MCP server entry point, tool registration (stdio transport)
   agent.ts     — Claude Agent SDK wrapper; configures mode-specific tools, permissions, model
+  stderr-stream.ts — Streams sub-agent thinking, text, and tool calls to stderr for CLI visibility
   undo.ts      — Execute undo state management; stores Query handles for rewindFiles
   prompts.ts   — System prompt constants for explore/plan/execute modes
   config.ts    — .env loading (SIBLING_ENV_PATH → ~/.sibling-repo/.env → ./.env),
@@ -39,6 +40,7 @@ src/
 tests/
   config.test.ts  — Config parsing, path resolution, defaults
   agent.test.ts   — Mode configs, result extraction, checkpointing, sandbox (mocked SDK)
+  stderr-stream.test.ts — Stderr streaming formatter unit tests
   undo.test.ts    — Undo state management, rewind operations (mocked Query handles)
   server.test.ts  — MCP integration tests via stdio client transport
 ```
@@ -50,12 +52,16 @@ tests/
 | Mode | allowedTools | disallowedTools | Permission | Default Model |
 |------|-------------|-----------------|-----------|---------------|
 | explore | Read, Grep, Glob, Bash | Write, Edit, MultiEdit | bypassPermissions | sonnet |
-| plan | Read, Grep, Glob, Bash | Write, Edit, MultiEdit | plan | opus |
+| plan | Read, Grep, Glob, Bash | Write, Edit, MultiEdit | bypassPermissions | opus |
 | execute | Read, Grep, Glob, Bash, Write, Edit, MultiEdit | (none) | acceptEdits | opus |
 
-`allowedTools` auto-approves tools; `disallowedTools` hard-blocks them (overrides everything including bypassPermissions).
+`allowedTools` auto-approves tools; `disallowedTools` hard-blocks them (overrides everything including bypassPermissions). Both explore and plan modes use `bypassPermissions` with Write/Edit/MultiEdit in `disallowedTools` to ensure read-only access without triggering Claude Code's built-in plan-mode file-writing behavior.
 
 Execute mode additionally enables: file checkpointing (track all changes, enable undo via `Query.rewindFiles()`), sandbox (filesystem writes scoped to target repo, `allowUnsandboxedCommands: false`). The `Query` handle is stored in `undo.ts` for the `undo_last_execute` tool.
+
+## Stderr Streaming
+
+All sub-agent activity is streamed to stderr in real-time via `includePartialMessages: true`. The `stderr-stream.ts` module formats `SDKPartialAssistantMessage` events with prefixes: `[thinking]`, `[text]`, `[tool:Name]`. This is always on — stderr is safe since the MCP protocol uses stdin/stdout.
 
 ## Critical Implementation Detail
 

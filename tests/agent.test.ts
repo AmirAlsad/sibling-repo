@@ -8,6 +8,10 @@ vi.mock("../src/undo.js", () => ({
   storeUndo: vi.fn(),
 }));
 
+vi.mock("../src/stderr-stream.js", () => ({
+  writeStreamEvent: vi.fn(),
+}));
+
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { storeUndo } from "../src/undo.js";
 import { runAgent } from "../src/agent.js";
@@ -100,9 +104,9 @@ describe("runAgent", () => {
     await runAgent("/tmp/repo", "plan it", "plan", "opus", 50, "backend");
 
     const opts = mockQuery.mock.calls[0][0].options;
-    expect(opts.permissionMode).toBe("plan");
+    expect(opts.permissionMode).toBe("bypassPermissions");
     expect(opts.disallowedTools).toEqual(["Write", "Edit", "MultiEdit"]);
-    expect(opts.allowDangerouslySkipPermissions).toBeUndefined();
+    expect(opts.allowDangerouslySkipPermissions).toBe(true);
     expect(opts.enableFileCheckpointing).toBeUndefined();
     expect(opts.sandbox).toBeUndefined();
   });

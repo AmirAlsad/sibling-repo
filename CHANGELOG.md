@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 (2026-03-30)
+
+### Added
+
+- Real-time stderr streaming of sub-agent thinking, text, and tool calls for CLI visibility
+- `stderr-stream.ts` module with formatted output prefixes (`[thinking]`, `[text]`, `[tool:Name]`)
+
+### Fixed
+
+- Plan mode now returns the complete plan in its response text instead of referencing a non-existent plan file
+- Changed plan mode from `permissionMode: "plan"` to `bypassPermissions` to avoid triggering Claude Code's built-in plan-file behavior
+
 ## 0.1.0 (2026-03-29)
 
 ### Added
