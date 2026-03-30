@@ -71,6 +71,10 @@ describe("loadConfig", () => {
 
   it("throws when SIBLING_REPOS is not set", async () => {
     delete process.env.SIBLING_REPOS;
+    // Point to an empty env file so dotenv doesn't fall through to ~/.sibling-repo/.env
+    const emptyEnv = join(TEST_DIR, "empty.env");
+    writeFileSync(emptyEnv, "");
+    process.env.SIBLING_ENV_PATH = emptyEnv;
 
     const { loadConfig } = await freshImport();
     expect(() => loadConfig()).toThrow("SIBLING_REPOS is not set");

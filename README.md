@@ -142,7 +142,9 @@ Returns the configured repositories and their paths. No parameters.
 |------|--------------|-------|---------|
 | **explore** | sonnet | Read, Grep, Glob, Bash (read-only) | Codebase investigation — find endpoints, schemas, architecture |
 | **plan** | opus | Read, Grep, Glob, Bash (read-only) | Design implementation plans without making changes |
-| **execute** | opus | Read, Grep, Glob, Bash, Write, Edit, MultiEdit | Make changes in the sibling repo |
+| **execute** | opus | Read, Grep, Glob, Bash, Write, Edit, MultiEdit | Make changes in the sibling repo (requires plan + approval first) |
+
+> **Plan before execute:** The `execute` mode requires a prior `plan` call and user approval. The orchestrator agent is instructed to always run `plan` first, present the plan to you for approval, and then pass the approved plan into `execute` as the prompt. This ensures you always review what will change before any code is written.
 
 ## Configuration
 
@@ -216,9 +218,15 @@ ask_repo("backend", "What is the HTTP method, path, request body, and response s
 ask_repo("backend", "Design a new GET endpoint at /api/v1/workouts/history that returns the user's last 30 workout sessions. Follow existing route patterns.", "plan")
 ```
 
-**Execute changes in a sibling repo:**
+**Execute changes in a sibling repo (plan → approve → execute):**
 ```
-ask_repo("backend", "Create a new GET endpoint at /api/v1/workouts/history that returns the user's last 30 sessions from Firestore.", "execute")
+# 1. Generate a plan
+ask_repo("backend", "Design a new GET endpoint at /api/v1/workouts/history that returns the user's last 30 sessions from Firestore.", "plan")
+
+# 2. The orchestrator presents the plan to you for approval
+
+# 3. After approval, the orchestrator passes the plan to execute
+ask_repo("backend", "<the approved plan>", "execute")
 ```
 
 ## Development
@@ -262,6 +270,19 @@ Check the path in your `SIBLING_REPOS` configuration. Paths must be absolute. `~
 
 **Agent returns no result**
 The spawned agent may have hit `SIBLING_MAX_TURNS`. Increase the limit in your `.env` or write a more specific prompt.
+
+## Updating
+
+How you receive updates depends on your installation method:
+
+- **npx (recommended):** Updates are automatic. The `-y` flag in `npx -y sibling-repo` fetches the latest version from npm on each launch.
+- **Global install:** Run `npm update -g sibling-repo` to pull the latest version.
+- **Local clone:** Pull the latest changes and rebuild:
+  ```bash
+  git pull && npm install && npm run build
+  ```
+
+No changes to your MCP registration or `.env` configuration are needed when updating — only the server binary changes.
 
 ## License
 

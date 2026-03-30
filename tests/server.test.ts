@@ -63,6 +63,14 @@ describe("MCP Server Integration", () => {
     expect(askRepo.description).toContain("repo-a");
   });
 
+  it("ask_repo description requires plan before execute", async () => {
+    const { tools } = await client.listTools();
+    const askRepo = tools.find((t) => t.name === "ask_repo")!;
+
+    expect(askRepo.description).toContain("Always run \"plan\" mode first");
+    expect(askRepo.description).toContain("user approval");
+  });
+
   it("list_repos returns configured repositories", async () => {
     const result = await client.callTool({
       name: "list_repos",

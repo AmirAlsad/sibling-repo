@@ -28,7 +28,7 @@ Available repos: ${repoListStr}
 Modes:
 - explore: Read-only investigation. Use for questions about endpoints, schemas, architecture, conventions, or "how does X work" queries.
 - plan: Generate an implementation plan without writing code. Use when you need a step-by-step plan for changes in the sibling repo.
-- execute: Read-write. Actually make changes in the sibling repo. Use when you need the sibling repo to implement something.`,
+- execute: Read-write. Actually make changes in the sibling repo. IMPORTANT: Always run "plan" mode first and get user approval before using "execute". Pass the approved plan as the prompt to the execute call so the agent follows it exactly.`,
     {
       repo: z.string().describe("Repository short name from SIBLING_REPOS"),
       prompt: z.string().describe("The task or question for the sibling agent"),
