@@ -146,11 +146,38 @@ Returns the configured repositories and their paths. No parameters.
 
 ## Configuration
 
-sibling-repo reads from a `.env` file, searched in order:
+sibling-repo reads its configuration from a `.env` file. On startup, it searches the following locations in order and uses the first one found:
 
-1. `SIBLING_ENV_PATH` environment variable (explicit override)
-2. `~/.sibling-repo/.env` (user-level default)
-3. `./.env` (current directory)
+| Priority | Location | Purpose |
+|----------|----------|---------|
+| 1 | `SIBLING_ENV_PATH` env var | Explicit override — point to any `.env` file |
+| 2 | `~/.sibling-repo/.env` | User-level default, shared across all projects |
+| 3 | `./.env` | Current working directory |
+
+The user-level path (`~/.sibling-repo/.env`) is the default because the `.env` contains your personal OAuth token and machine-specific absolute paths — values that differ per developer, not per project. This works well when you register sibling-repo at **user scope** and work on a single multi-repo project.
+
+### Per-project configuration
+
+If you work on multiple multi-repo projects with different sibling repos, or register the MCP at **project** or **local** scope, you'll want per-project config instead. Two options:
+
+**Option A: Use `SIBLING_ENV_PATH` in the MCP registration.** Pass an environment variable pointing to a project-specific `.env` file:
+
+```bash
+# Register with a project-specific .env
+claude mcp add --scope project sibling-repo \
+  -e SIBLING_ENV_PATH=/path/to/your-project/.sibling-repo/.env \
+  -- npx -y sibling-repo
+```
+
+**Option B: Use a `.env` in the project root.** If sibling-repo doesn't find the first two locations, it falls back to `./.env` in the current directory. Place your config there (and add `.env` to your `.gitignore` since it contains your token):
+
+```bash
+# In your project root
+cat > .env << 'EOF'
+CLAUDE_CODE_OAUTH_TOKEN=<your-token>
+SIBLING_REPOS={"backend":"../backend","frontend":"../frontend"}
+EOF
+```
 
 ### Environment Variables
 
