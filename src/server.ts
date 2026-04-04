@@ -261,7 +261,11 @@ Background execution:
 
   server.tool(
     "undo_last_execute",
-    `Revert all file changes from the last execute-mode run on a conversation. This restores files to their state before the execute agent made changes.`,
+    `Revert all file changes from the last execute-mode run on a conversation. This restores files to their state before the execute agent made changes.
+
+- Requires conversation_id (returned by ask_repo or check_job).
+- Only the most recent execute per conversation can be undone.
+- Blocked while a background job is still running on the conversation — wait for it to complete first (use check_job to monitor).`,
     {
       conversation_id: z
         .string()
@@ -308,7 +312,7 @@ Background execution:
 
   server.tool(
     "list_repos",
-    "List all configured sibling repositories and their paths.",
+    "List all configured sibling repositories, their absolute paths, and whether they have a CLAUDE.md file. Use this to discover available repo short names for ask_repo.",
     {},
     async () => {
       const repos = Array.from(config.repos.values()).map((r) => ({
@@ -326,7 +330,7 @@ Background execution:
 
   server.tool(
     "list_conversations",
-    "List all active conversations across sibling repositories. Shows conversation ID, repo, last mode used, timestamps, result snippet, and turn count.",
+    "List all active conversations across sibling repositories. Shows conversation ID, repo, last mode used, timestamps, result snippet, and turn count. Use conversation IDs from this list to resume a conversation via ask_repo's conversation_id parameter, or to revert changes via undo_last_execute.",
     {},
     async () => {
       const conversations = listConversations().map((c) => ({
@@ -355,8 +359,9 @@ Background execution:
     "check_job",
     `Check the status of a background agent job, or list all jobs.
 
-- With job_id: Returns the job's status (running/completed/failed), and the full result when complete.
-- Without job_id: Lists all background jobs with their statuses.`,
+- With job_id: Returns the job's status (running/completed/failed), and the full result when complete. Completed results include conversation_id for use with undo_last_execute or to resume the conversation via ask_repo.
+- Without job_id: Lists all background jobs with their statuses, conversation IDs, and result snippets.
+- Use this to poll after calling ask_repo with background: true.`,
     {
       job_id: z
         .string()
