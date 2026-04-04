@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**sibling-repo** is an MCP server (stdio transport) that lets a Claude Code agent spawn fully contextualized Claude Code sessions in sibling repositories. It exposes four tools — `ask_repo` (spawn or resume an agent in a configured repo with explore/plan/execute mode), `undo_last_execute` (revert file changes from a conversation's execute run), `list_repos` (discover configured repos), and `list_conversations` (see active conversations). Conversations persist in-memory for the MCP server's lifetime, enabling multi-turn workflows like explore → plan → execute with full context preserved. Built on the Claude Agent SDK and MCP SDK.
+**sibling-repo** is an MCP server (stdio transport) that lets a Claude Code agent spawn fully contextualized Claude Code sessions in sibling repositories. It exposes five tools — `ask_repo` (spawn or resume an agent in a configured repo with explore/plan/execute mode, supports background execution), `check_job` (poll background job status or list all jobs), `undo_last_execute` (revert file changes from a conversation's execute run), `list_repos` (discover configured repos), and `list_conversations` (see active conversations). Conversations persist in-memory for the MCP server's lifetime, enabling multi-turn workflows like explore → plan → execute with full context preserved. Multiple agents can run in parallel via background mode. Built on the Claude Agent SDK and MCP SDK.
 
 ## Build, Test & Run
 
@@ -37,13 +37,15 @@ src/
   prompts.ts   — System prompt constants for explore/plan/execute modes
   config.ts    — .env loading (SIBLING_ENV_PATH → ~/.sibling-repo/.env → ./.env),
                  SIBLING_REPOS JSON parsing, path validation
-  types.ts     — Shared TypeScript types (includes Conversation, ExecuteCheckpoint, AgentResult)
+  jobs.ts      — In-memory background job store; create/complete/fail/get/list jobs
+  types.ts     — Shared TypeScript types (includes Conversation, ExecuteCheckpoint, AgentResult, BackgroundJob)
 tests/
   config.test.ts  — Config parsing, path resolution, defaults
   agent.test.ts   — Mode configs, result extraction, checkpointing, resume, sandbox (mocked SDK)
   conversations.test.ts — Conversation store CRUD operations
   stderr-stream.test.ts — Stderr streaming formatter unit tests
   undo.test.ts    — Undo state management, rewind operations (keyed by conversation ID)
+  jobs.test.ts    — Background job store CRUD operations
   server.test.ts  — MCP integration tests via stdio client transport
 ```
 
@@ -70,6 +72,16 @@ Conversations enable multi-turn workflows with full context preservation across 
 - **Storage**: In-memory `Map` in `conversations.ts`. Dies with the MCP server process (which dies with the orchestrating agent).
 - **Undo**: Keyed by conversation ID, not repo name. Multiple execute conversations on the same repo each get independent undo.
 - **Metadata**: Each conversation tracks: ID, repo, session ID, last mode, created_at, last_used_at, result snippet, turn count.
+
+## Background Execution
+
+`ask_repo` supports a `background: boolean` parameter (default `false`). When `true`, the agent is spawned asynchronously and the tool returns immediately with a `job_id` and `conversation_id`. The caller uses `check_job` to poll for completion.
+
+- **Job lifecycle**: running → completed | failed. Jobs are stored in-memory in `jobs.ts`.
+- **Conversation pre-allocation**: When `background: true` and no `conversation_id` is provided, the conversation is created eagerly with placeholder data, then updated when the agent completes.
+- **Parallel execution**: Multiple background agents can run concurrently across different repos or the same repo. No concurrency limit.
+- **Undo guard**: `undo_last_execute` is blocked while a background job is still running on the same conversation.
+- **Stderr interleaving**: Multiple background agents interleave stderr output. This is acceptable since stderr is a debug channel.
 
 ## Stderr Streaming
 

@@ -155,6 +155,50 @@ describe("MCP Server Integration", () => {
     expect(content[0].text).toContain("No execute session to undo");
   });
 
+  it("lists check_job in available tools", async () => {
+    const { tools } = await client.listTools();
+    const toolNames = tools.map((t) => t.name);
+    expect(toolNames).toContain("check_job");
+  });
+
+  it("ask_repo tool has background in input schema", async () => {
+    const { tools } = await client.listTools();
+    const askRepo = tools.find((t) => t.name === "ask_repo")!;
+
+    expect(askRepo.inputSchema.properties).toHaveProperty("background");
+    // background should be optional (has default)
+    expect(askRepo.inputSchema.required).not.toContain("background");
+  });
+
+  it("ask_repo description includes background guidance", async () => {
+    const { tools } = await client.listTools();
+    const askRepo = tools.find((t) => t.name === "ask_repo")!;
+
+    expect(askRepo.description).toContain("background");
+    expect(askRepo.description).toContain("check_job");
+  });
+
+  it("check_job returns empty list when no jobs exist", async () => {
+    const result = await client.callTool({
+      name: "check_job",
+      arguments: {},
+    });
+
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0].text).toBe("No background jobs.");
+  });
+
+  it("check_job returns error for unknown job_id", async () => {
+    const result = await client.callTool({
+      name: "check_job",
+      arguments: { job_id: "nonexistent-job-id" },
+    });
+
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0].text).toContain('Job "nonexistent-job-id" not found');
+  });
+
   it("ask_repo returns error for repo with deleted path", async () => {
     // Remove the repo directory after config was loaded
     rmSync(REPO_A, { recursive: true, force: true });

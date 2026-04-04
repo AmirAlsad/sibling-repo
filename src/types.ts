@@ -41,6 +41,22 @@ export interface Conversation {
   turnCount: number;
 }
 
+export type JobStatus = "running" | "completed" | "failed";
+
+export interface BackgroundJob {
+  id: string;
+  status: JobStatus;
+  conversationId: string;
+  repo: string;
+  mode: AgentMode;
+  prompt: string;
+  createdAt: Date;
+  completedAt?: Date;
+  result?: string;
+  error?: string;
+  hasCheckpoint: boolean;
+}
+
 export interface SiblingConfig {
   repos: Map<string, RepoEntry>;
   models: {

@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/sibling-repo.svg)](https://www.npmjs.com/package/sibling-repo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An MCP server that gives Claude Code agents the ability to spawn fully contextualized Claude Code sessions in sibling repositories. Ask questions about a backend API from your frontend repo, plan cross-repo implementations, or trigger changes in another codebase — all through a single tool call.
+An MCP server that gives Claude Code agents the ability to spawn fully contextualized Claude Code sessions in sibling repositories. Ask questions about a backend API from your frontend repo, plan cross-repo implementations, or trigger changes in another codebase — all through a single tool call. Supports background execution for running multiple agents in parallel.
 
 ## Quick Start
 

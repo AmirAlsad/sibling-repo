@@ -13,14 +13,25 @@ Spawn a Claude Code agent in a sibling repository.
 | `mode` | `"explore"` \| `"plan"` \| `"execute"` | `"explore"` | Agent mode |
 | `model` | string | per-mode default | Model override: `"haiku"`, `"sonnet"`, `"opus"` |
 | `conversation_id` | string | — | Resume an existing conversation |
+| `background` | boolean | `false` | Run in background, return a `job_id` immediately |
 
-### `undo_last_execute`
+### `check_job`
 
-Revert all file changes from the last execute-mode run on a sibling repository. Only the most recent execute per conversation can be undone.
+Check the status of a background agent job, or list all jobs.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `repo` | string | required | Repository short name to undo changes in |
+| `job_id` | string | — | Job ID to check. Omit to list all jobs. |
+
+When called with a `job_id`, returns the job's status (`running`, `completed`, or `failed`) and the full result when complete. When called without a `job_id`, returns a summary of all background jobs.
+
+### `undo_last_execute`
+
+Revert all file changes from the last execute-mode run on a sibling repository. Only the most recent execute per conversation can be undone. Blocked while a background job is still running on the conversation.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `conversation_id` | string | required | Conversation ID to undo execute changes for |
 
 ### `list_repos`
 
@@ -53,6 +64,28 @@ Conversations enable multi-turn workflows with full context preserved across `as
 - **New conversation**: Omit `conversation_id` — a new conversation is created and its ID returned.
 - **Resume**: Pass `conversation_id` to continue with full context. Mode can change between turns (e.g., explore -> plan -> execute).
 - **Lifetime**: Conversations are stored in-memory and persist for the MCP server's lifetime (which matches the orchestrating agent's session).
+
+## Background Execution
+
+Set `background: true` on `ask_repo` to run the agent asynchronously. The tool returns immediately with a `job_id` and `conversation_id`, allowing you to fire off multiple agents in parallel.
+
+```
+# Start two agents in parallel
+ask_repo("backend", "Find the auth middleware", "explore", background=true)
+# → { job_id: "abc-123", conversation_id: "def-456", status: "running" }
+
+ask_repo("frontend", "Find the login component", "explore", background=true)
+# → { job_id: "ghi-789", conversation_id: "jkl-012", status: "running" }
+
+# Poll for results
+check_job("abc-123")  # → running or completed with result
+check_job()           # → list all jobs
+```
+
+- Multiple agents can run concurrently across different repos or the same repo
+- Conversations are pre-allocated so `conversation_id` is available immediately
+- `undo_last_execute` is blocked while a background job is running on the conversation
+- Stderr output from concurrent agents will interleave (this is expected)
 
 ## Examples
 
