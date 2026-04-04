@@ -1,0 +1,47 @@
+name: Publish to npm
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+      - name: Check if version changed
+        id: version
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view sibling-repo version 2>/dev/null || echo "0.0.0")
+          echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+          echo "published=$PUBLISHED" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL" != "$PUBLISHED" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: steps.version.outputs.changed == 'true'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Tag release
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          git tag "v${{ steps.version.outputs.local }}"
+          git push origin "v${{ steps.version.outputs.local }}"
